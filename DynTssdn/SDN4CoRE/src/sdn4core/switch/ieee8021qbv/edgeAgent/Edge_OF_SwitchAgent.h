@@ -32,8 +32,9 @@ protected:
     //omnetpp module funcitons
     virtual void initialize(int stage) override;
     virtual int numInitStages() const override { return inet::NUM_INIT_STAGES; }
-    void handleFlowModMessagewithACK(Open_Flow_Message *of_msg);
+    void handlePacketOutMessage(Open_Flow_Message *of_msg);
     bool isTaggingEnabled;
+    void handleFlowModMessagewithACK(openflow::Open_Flow_Message *of_msg);
 
 
     /**

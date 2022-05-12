@@ -36,6 +36,9 @@ module IEEE8021QbvOFNCSwitch extends IEEE8021QbvOpenFlowSwitch
        	int numConfigurators = default (2);
 		string of_configuratorType = default("NetConfDataConfiguratorFlowTable");	
 		string qbv_configuratorType = default("NetConfDataConfiguratorIEEE8021Qbv");
+		
+
+        switchAgentType = default("Edge_OF_SwitchAgent");   //override
 
     gates:
         // no additional gates needed

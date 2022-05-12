@@ -26,10 +26,15 @@
 #include <sdn4core/switch/base/engine/OF_RelayUnit.h>
 #include <sdn4core/switch/base/engine/OF_SwitchAgent.h>
 
+//AUTO_GENERATED MESSAGES
+#include "core4inet/linklayer/ethernet/avb/AVBFrame_m.h"
+#include "core4inet/linklayer/ethernet/avb/SRPFrame_m.h"
+#include "core4inet/linklayer/contract/ExtendedIeee802Ctrl_m.h"
 
 using namespace std;
 using namespace inet;
 using namespace openflow;
+using namespace CoRE4INET;
 
 namespace SDN4CoRE{
 
@@ -141,7 +146,6 @@ void OF_SwitchAgent::processControlPlanePacket(cMessage *msg){
     }
     delete msg;
 }
-
 
 void OF_SwitchAgent::scheduleNextServiceTime(){
     //check for more waiting packets

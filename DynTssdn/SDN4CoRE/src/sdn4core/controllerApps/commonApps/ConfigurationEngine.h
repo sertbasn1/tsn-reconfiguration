@@ -98,6 +98,7 @@ public:
     uint16_t OF_match_version_number;
     std::map< uint64_t,versionInfo> StreamFlowVersionTable;  //stream id  -> versionInfo
     std::map<uint16_t,vector<int>> AckWaitingPaths;
+    std::map<uint16_t,int> IngressSwTable; //map of matchid-ingress switch
 
     void addMatchVersiontoStream(uint64_t sid);
     void activateMatchVersionofStream(uint64_t sid, uint16_t activeVersion);

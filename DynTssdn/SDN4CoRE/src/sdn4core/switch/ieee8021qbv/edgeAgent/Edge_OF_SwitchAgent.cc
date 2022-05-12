@@ -41,16 +41,16 @@ void Edge_OF_SwitchAgent::initialize(int stage){
     OF_SwitchAgent::initialize(stage);
     isTaggingEnabled = par("isTaggingEnabled").boolValue();
     switch(stage){
-        case INITSTAGE_LOCAL: {
-            //register siganls
-            forwardSRPtoConSig = registerSignal("forwardSRPtoConSig");
-            relayUnit->subscribe(forwardSRPtoConSig, this);
-            break;
-        }
+    case INITSTAGE_LOCAL: {
+        //register siganls
+        forwardSRPtoConSig = registerSignal("forwardSRPtoConSig");
+        relayUnit->subscribe(forwardSRPtoConSig, this);
+        break;
+    }
 
-         default:
-             break;
-         }
+    default:
+        break;
+    }
 }
 
 
@@ -74,7 +74,12 @@ void Edge_OF_SwitchAgent::processControlPlanePacket(cMessage *msg){
 #endif
 
         case OFPT_FLOW_MOD:
-            handleFlowModMessagewithACK(of_msg);
+            if(isTaggingEnabled)
+                handleFlowModMessagewithACK(of_msg);
+            break;
+
+        case OFPT_PACKET_OUT:
+            handlePacketOutMessage(of_msg);
             break;
         default:
             //not a special of message forward to base class.
@@ -84,17 +89,52 @@ void Edge_OF_SwitchAgent::processControlPlanePacket(cMessage *msg){
     }
 }
 
+
+void Edge_OF_SwitchAgent::handleFlowModMessagewithACK(Open_Flow_Message *of_msg){
+    //cout << "OF_SwitchAgent::handleFlowModMessagewithACK" << endl;
+    if(OFP_Flow_Mod *flowModMsg = dynamic_cast<OFP_Flow_Mod *> (of_msg)){
+        _flowTables[flowModMsg->getTable_id()]->handleFlowMod(flowModMsg);
+
+        //reply back to controller as ACK for received flow rule
+        oxm_basic_match& match = flowModMsg->getMatch();
+        uint16_t matchVersion = match.OFB_TAG;
+        EthernetIIFrameWithQTag * toController = new EthernetIIFrameWithQTag("ACKforFlowMod");
+        toController->setDisplayString("ACKforFlowMod");
+        toController->setmatchVersion(matchVersion);
+
+        OFP_Packet_In *packetIn = new OFP_Packet_In("packetIn");
+        packetIn->getHeader().version = OFP_VERSION;
+        packetIn->getHeader().type = OFPT_PACKET_IN;
+#if OFP_VERSION_IN_USE == OFP_100
+        packetIn->setReason(OFPR_NO_MATCH);//TODO maybe add another reason for realtime streams.
+#elif OFP_VERSION_IN_USE == OFP_151
+        packetIn->setReason(OFPR_ACTION_SET);//TODO maybe add another reason for realtime streams.
+#endif
+        packetIn->setByteLength(32);
+
+        // allways send full packet with packet-in message
+        packetIn->encapsulate(toController);
+        packetIn->setBuffer_id(OFP_NO_BUFFER);
+        socket.send(packetIn);
+        //        IInterfaceTable *inet_ift = getModuleFromPar<IInterfaceTable>(par("interfaceTableModule"), this);
+        //        MACAddress mac = inet_ift->getInterface(0)->getMacAddress();
+        //        cout<<"at "<<mac<<" ACK for version "<<matchVersion<<" is sent to controller"<<endl;
+
+
+    }
+
+    delete of_msg;
+}
 void Edge_OF_SwitchAgent::handleSRPFromController(cMessage* msg) {
     //triggers the relay agent to forward packet comibg from controller to the edge (e.g., talker)
     if (OFP_Packet_Out *packetOut = dynamic_cast<OFP_Packet_Out *>(msg)) {
-            if (CoRE4INET::SRPFrame * srpFrame = dynamic_cast<CoRE4INET::SRPFrame *>(packetOut->decapsulate())) {
-                if (CoRE4INET::ListenerReady* listenerReady = dynamic_cast<CoRE4INET::ListenerReady*>(srpFrame)) {
-                    cout<<"--->"<<this->getFullPath()<<" (handleSRPFromController) :ListenerReady taken from the controller "<<std::endl;
-                    ((Edge_OF_RelayUnit*)relayUnit)->handleSRPMsgFromController(srpFrame);
-
-                }
+        if (CoRE4INET::SRPFrame * srpFrame = dynamic_cast<CoRE4INET::SRPFrame *>(packetOut->decapsulate())) {
+            if (CoRE4INET::ListenerReady* listenerReady = dynamic_cast<CoRE4INET::ListenerReady*>(srpFrame)) {
+                cout<<"--->"<<this->getFullPath()<<" (handleSRPFromController) :ListenerReady taken from the controller "<<std::endl;
+                ((Edge_OF_RelayUnit*)relayUnit)->handleSRPMsgFromController(srpFrame);
             }
         }
+    }
     delete msg;
 }
 
@@ -111,38 +151,18 @@ void Edge_OF_SwitchAgent::receiveSignal(cComponent *src, simsignal_t id, cObject
 }
 
 
-void Edge_OF_SwitchAgent::handleFlowModMessagewithACK(Open_Flow_Message *of_msg){
-    EV << "Edge_OF_SwitchAgent::handleFlowModMessagewithACK" << '\n';
-    if(OFP_Flow_Mod *flowModMsg = dynamic_cast<OFP_Flow_Mod *> (of_msg)){
-        _flowTables[flowModMsg->getTable_id()]->handleFlowMod(flowModMsg);
+void Edge_OF_SwitchAgent::handlePacketOutMessage(Open_Flow_Message *msg){
+    cout << "Edge_OF_SwitchAgent::handlePacketOutMessage" << endl;
+    if (OFP_Packet_Out *packetOut = dynamic_cast<OFP_Packet_Out *>(msg)) {
+        if (CoRE4INET::EthernetIIFrameWithQTag * qframe = dynamic_cast<CoRE4INET::EthernetIIFrameWithQTag *>(packetOut->decapsulate())) {
+            if(string(qframe->getDisplayString()).compare("ActivationMessage")==0) {
+                //cout<<"--->"<<this->getFullPath()<<" ActivationMessage taken from the controller "<<std::endl;
+                ((Edge_OF_RelayUnit*)relayUnit)->handleMatchVersionMessage(qframe);
+            }
 
-        //reply back to controller as ACK for received flow rule
-        if(isTaggingEnabled){
-            oxm_basic_match& match = flowModMsg->getMatch();
-            uint16_t matchVersion = match.OFB_TAG;
-            EthernetIIFrameWithQTag * toController = new EthernetIIFrameWithQTag("ACKforFlowMod");
-            toController->setDisplayString("ACKforFlowMod");
-            toController->setmatchVersion(matchVersion);
-
-            OFP_Packet_In *packetIn = new OFP_Packet_In("packetIn");
-            packetIn->getHeader().version = OFP_VERSION;
-            packetIn->getHeader().type = OFPT_PACKET_IN;
-#if OFP_VERSION_IN_USE == OFP_100
-            packetIn->setReason(OFPR_NO_MATCH);//TODO maybe add another reason for realtime streams.
-#elif OFP_VERSION_IN_USE == OFP_151
-            packetIn->setReason(OFPR_ACTION_SET);//TODO maybe add another reason for realtime streams.
-#endif
-            packetIn->setByteLength(32);
-
-            // allways send full packet with packet-in message
-            packetIn->encapsulate(toController);
-            packetIn->setBuffer_id(OFP_NO_BUFFER);
-            socket.send(packetIn);
-//            IInterfaceTable *inet_ift = getModuleFromPar<IInterfaceTable>(par("interfaceTableModule"), this);
-//            MACAddress mac = inet_ift->getInterface(0)->getMacAddress();
-//            cout<<"at "<<mac<<" ACK for version "<<matchVersion<<" is sent to controller"<<endl;
         }
     }
+    delete msg;
 }
 
 

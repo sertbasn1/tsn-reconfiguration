@@ -87,7 +87,7 @@ void OF_Controller::handleMessage(cMessage *msg){
             this->booted = true;
             emit(BootedSignalId, this);
         }else if (msg->getKind() == MSGKIND_EXTRACT_TOPO){
-            const char *NodeType = " sdn4core.examples.tsnMigration.getnet.Host sdn4core.examples.tsnMigration.getnet.Switch sdn4core.examples.tsnMigration.getnet.EdgeSwitch";
+            const char *NodeType = " sdn4core.examples.tsnReconfiguration.getnet.Host sdn4core.examples.tsnReconfiguration.getnet.Switch sdn4core.examples.tsnReconfiguration.getnet.EdgeSwitch";
             extractTopology(NodeType);
             extractSwitchInfoTable();
             extractHostProfileTable();

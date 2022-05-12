@@ -13,7 +13,7 @@
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 // 
 
-package sdn4core.examples.tsnMigration.getnet;
+package sdn4core.examples.tsnReconfiguration.getnet;
 
 import sdn4core.controller.base.NetConfOpenFlowController;
 import inet.node.ethernet.Eth100M;

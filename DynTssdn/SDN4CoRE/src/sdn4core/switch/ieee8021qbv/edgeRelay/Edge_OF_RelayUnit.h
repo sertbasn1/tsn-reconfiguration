@@ -41,6 +41,8 @@ class Edge_OF_RelayUnit : public OF_RelayUnit
 {
 public:
     void handleSRPMsgFromController(CoRE4INET::SRPFrame * srpFrame );
+    void handleMatchVersionMessage(CoRE4INET::EthernetIIFrameWithQTag * qframe);
+
 
 protected:
     virtual void initialize(int stage) override;
@@ -52,7 +54,8 @@ protected:
 
 protected:
     std::map<uint64_t, int > StreamPortMap; //streamid-related endhost port
-    std::map<std::tuple<std::string,std::string,uint16_t>,uint64_t > StreamInfoMap; //(src-dst-vlan)->streamid
+    std::vector<uint64_t> SeenStreams; //strre<ms that I am the ingress switch
+    std::map<uint64_t, uint16_t > StreamActiveMatchVersionMap;
 };
 
 } /*end namespace SDN4CoRE*/

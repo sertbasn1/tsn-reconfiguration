@@ -187,12 +187,12 @@ void OF_RelayUnit::processFrame(EthernetIIFrame *frame) {
 
     OF_FlowTableEntry *lookup = _flowTables[0]->lookup(match);
 
-/*
-    IInterfaceTable *inet_ift = getModuleFromPar<IInterfaceTable>(par("interfaceTableModule"), this);
-    MACAddress mac = inet_ift->getInterface(0)->getMacAddress();
-    if (EthernetIIFrameWithQTag* qframe = dynamic_cast< EthernetIIFrameWithQTag*>(frame))
-        cout<< "at"<<mac<<".........Lookup for message from "<<frame->getSrc()<<" to "<<frame->getDest()<<" ->"<<qframe->getVID()<<", tag:"<<qframe->getmatchVersion()<<" at t:"<<simTime()<<endl;
-*/
+
+//    IInterfaceTable *inet_ift = getModuleFromPar<IInterfaceTable>(par("interfaceTableModule"), this);
+//    MACAddress mac = inet_ift->getInterface(0)->getMacAddress();
+//    if (EthernetIIFrameWithQTag* qframe = dynamic_cast< EthernetIIFrameWithQTag*>(frame))
+//        cout<< "at"<<mac<<".........Lookup for message from stream "<<qframe->getStreamID()<<", tag:"<<qframe->getmatchVersion()<<" at t:"<<simTime()<<endl;
+
 
     if (lookup != nullptr) {
         //lookup successful
@@ -234,6 +234,7 @@ oxm_basic_match OF_RelayUnit::extractMatch(EthernetIIFrame* frame) {
     }
     else
         match.OFB_TAG = 0;
+
 
     //IInterfaceTable *inet_ift = getModuleFromPar<IInterfaceTable>(par("interfaceTableModule"), this);
     //MACAddress mac = inet_ift->getInterface(0)->getMacAddress();

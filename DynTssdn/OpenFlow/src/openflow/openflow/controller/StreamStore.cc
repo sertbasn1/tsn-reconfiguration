@@ -52,7 +52,7 @@ void StreamStore::printStreamToStore(){
     std::ofstream fs;
 
     std::string fid="StreamStore";
-    std::string filename="/tssdn-docker/omnetpp-5.5.1/DynTssdn/SDN4CoRE/examples/tsnMigration/getnet/results/"+fid+".txt";
+    std::string filename="/tssdn-docker/omnetpp-5.5.1/DynTssdn/SDN4CoRE/examples/tsnReconfiguration/getnet/results/"+fid+".txt";
     fs.open(filename.c_str(), ios::out | ios::app ); //append mode
 
 

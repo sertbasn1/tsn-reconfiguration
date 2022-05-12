@@ -51,6 +51,7 @@ void ConfigurationEngine::receiveSignal(cComponent* src, simsignal_t id, cObject
                 if (EthernetIIFrameWithQTag* qframe = dynamic_cast< EthernetIIFrameWithQTag*>(frame)){
                     if(string(qframe->getDisplayString()).compare("ACKforFlowMod")==0){
                         //ACK packet coming from the switch that guaranteed that the related match versioned rule is deployed on the switch
+                        //cout<<"[ConfigurationEngine::receiveSignal]:ACKforFlowMod"<<endl;
                         uint16_t matchVersion = qframe->getmatchVersion();
                         Switch_Info * swInfo = controller->findSwitchInfoFor(packet_in);
                         vector<int> path = AckWaitingPaths[matchVersion];
@@ -152,19 +153,20 @@ void ConfigurationEngine::insertAssignedPath(vector<int> path,  uint16_t dl_vlan
     std::list<cTopology::Node *> switchesOnPath;
 
     for(int i=0; i<path.size(); ++i){
-        cout<<path[i]<<"\t";
         switchesOnPath.push_back(topo->getNode(path[i]));
     }
 
-    int srcSw,dstSw=0;
+    cTopology::Node * srcSw= topo->getNode(path[0]);
+    int srcSw_ModuleId = srcSw->getModuleId(); //ingress switch for that stream
+    IngressSwTable[match_version]= srcSw_ModuleId;
+
+
     int srchost_topo_ix,dsthost_topo_ix;
     for (auto x = HostProfileTable->begin(); x != HostProfileTable->end(); x++) {
         if((x->second).getMacAddress()==dstHost.str()){
-            dstSw=(x->second).getConnectedSw_topo_index();
             dsthost_topo_ix=(x->second).getTopo_index();
         }
         else if((x->second).getMacAddress()==srcHost.str()){
-            dstSw=(x->second).getConnectedSw_topo_index();
             srchost_topo_ix=(x->second).getTopo_index();
         }
     }
@@ -210,6 +212,7 @@ void ConfigurationEngine::insertAssignedPath(vector<int> path,  uint16_t dl_vlan
 
         openflow::oxm_basic_match match = createDesiredMatch(inport,dstHost,srcHost, dl_vlan,match_version);
         sendFlowModMessage(OFPFC_ADD, match, outport, tsocket,_idleTimeout,_hardTimeout);
+
     }
 
 }
@@ -222,7 +225,7 @@ void ConfigurationEngine::sendListenerReady(uint64_t streamID, uint16_t vlan_ide
     listenerReady->setVlan_identifier(vlan_identifier);
 
     //inform RequestHandlerControllerApp
-    cout<<"Calling sendListenerReadyToTalker"<<endl;
+    //cout<<"Calling sendListenerReadyToTalker"<<endl;
     cModule *targetModule = getModuleByPath("getnet.open_flow_controller1.controllerApps[0]");
     RequestHandlerControllerApp * requestHandlerModule= check_and_cast<RequestHandlerControllerApp *>(targetModule);
     requestHandlerModule->sendListenerReadyToTalker(listenerReady->dup());
@@ -371,17 +374,39 @@ void  ConfigurationEngine::activateMatchVersionofStream(uint64_t sid, uint16_t a
 
 void  ConfigurationEngine::activateMatchVersion(uint16_t activeVersion){
 
-    //cout<<"activateMatchVersion is calledd"<<endl;
+    cout<<"[ConfigurationEngine::activateMatchVersion]";
+    uint64_t streamID;
     for (auto i : StreamFlowVersionTable){
         if(i.second.next ==activeVersion){
             versionInfo info = versionInfo();
             info.current=i.second.next; //activated
             info.next=0;
             StreamFlowVersionTable[i.first]=info;
-            cout<<"[ConfigurationEngine]: From now in Stream "<<i.first<<" is going to be tagged with "<<activeVersion<<endl;
-            return;
+            streamID = i.first;
+            cout<<"From now on Stream "<<streamID<<" is going to be tagged with "<<activeVersion<<endl;
+            break;
         }
     }
+
+
+    //tell ingress switch for this stream(with the given match version) to tag packets with that version number (from now on)
+    OFP_Packet_Out *packetOut = new OFP_Packet_Out("packetOut");
+    packetOut->getHeader().version = OFP_VERSION;
+    packetOut->getHeader().type = OFPT_PACKET_OUT;
+    packetOut->setBuffer_id(OFP_NO_BUFFER);
+    packetOut->setKind(TCP_C_SEND);
+
+
+    EthernetIIFrameWithQTag * toIngressSwitch = new EthernetIIFrameWithQTag("ActivationMessage");
+    toIngressSwitch->setDisplayString("ActivationMessage");
+    toIngressSwitch->setmatchVersion(activeVersion);
+    toIngressSwitch->setStreamID(streamID);
+
+    packetOut->encapsulate(toIngressSwitch);
+
+    int targetSwId = IngressSwTable[activeVersion];
+    TCPSocket * tsocket = findRelatedSwitchSocket(targetSwId);
+    tsocket->send(packetOut);
 }
 
 

@@ -46,19 +46,20 @@ void Edge_OF_RelayUnit::initialize(int stage) {
     isTaggingEnabled = par("isTaggingEnabled").boolValue();
 }
 
+
+
 void Edge_OF_RelayUnit::processDataPlanePacket(cMessage *msg){
+
+
     bool msgHandled = false;
-    IInterfaceTable *inet_ift = getModuleFromPar<IInterfaceTable>(par("interfaceTableModule"), this);
-    MACAddress mac = inet_ift->getInterface(0)->getMacAddress();
 
     if(msg->arrivedOn("dataPlaneIn")){
-        if (inet::EthernetIIFrame *frame = dynamic_cast<inet::EthernetIIFrame*>(msg)){
-            if (CoRE4INET::SRPFrame * srpFrame = dynamic_cast<CoRE4INET::SRPFrame *>(frame->decapsulate())) {
+        if(inet::EthernetIIFrame * frame = dynamic_cast<inet::EthernetIIFrame *>(msg)) {
+            if (dynamic_cast<CoRE4INET::SRPFrame *>(frame->getEncapsulatedPacket())) {
+                CoRE4INET::SRPFrame* srpFrame = dynamic_cast<CoRE4INET::SRPFrame *>(frame->decapsulate());
                 if (CoRE4INET::TalkerAdvertise* talkerAdvertise = dynamic_cast<CoRE4INET::TalkerAdvertise*>(srpFrame)) {
                     StreamPortMap[talkerAdvertise->getStreamID()]= frame->getArrivalGate()->getIndex();
-
-                    std::tuple<std::string,std::string,uint16_t> key= std::make_tuple(frame->getSrc().str(),frame->getDest().str(),talkerAdvertise->getVlan_identifier());
-                    StreamInfoMap[key]=talkerAdvertise->getStreamID();
+                    SeenStreams.push_back(talkerAdvertise->getStreamID());
 
                     inet::Ieee802Ctrl * controlInfo = new inet::Ieee802Ctrl();
                     controlInfo->setSwitchPort(frame->getArrivalGate()->getIndex());
@@ -66,65 +67,70 @@ void Edge_OF_RelayUnit::processDataPlanePacket(cMessage *msg){
 
                     CoRE4INET::SRPFrame* toController = dynamic_cast<CoRE4INET::SRPFrame *>(talkerAdvertise);
                     toController->setControlInfo(controlInfo);
-                    emit(forwardSRPtoConSig,toController->dup());
+                    emit(forwardSRPtoConSig,toController);
                     cout<<"TA forwarded by  "<<this->getFullPath()<<"to the controller "<<std::endl;
-                    delete toController;
                     msgHandled = true;
+
+                    delete msg; //= frame
                 }
-                //delete msg;
-            }
-            else
-            {  //tag packet with the rule version
+            }else if(isTaggingEnabled){
                 if (EthernetIIFrameWithQTag* qframe = dynamic_cast< EthernetIIFrameWithQTag*>(frame)){
-                   if(qframe->getmatchVersion()==0){         //if I am the ingress point for this frame, rules are already uploaded
-                        cModule *targetModule = getModuleByPath("getnet.open_flow_controller1.controllerApps[1]");
-                        ConfigurationEngine * module= check_and_cast<ConfigurationEngine *>(targetModule);
-                        std::tuple <std::string,std::string,uint16_t> key= std::make_tuple(qframe->getSrc().str(),qframe->getDest().str(), qframe->getVID());
-                        uint64_t sid = StreamInfoMap[key];
-                        uint16_t match_version = module->getMatchVersionbyStreamId(sid);
-                        //TODO: this should be handled differently, for now switches + controller shares StreamFlowVersionTable table
+                    uint64_t sid = qframe->getStreamID();
+                    //if I am the ingress point for this frame, rules are already loaded
+                    if(std::find(SeenStreams.begin(),   SeenStreams.end(), sid) != SeenStreams.end()){
+                        //means that frame is coming from end host that is connected to me
+                        uint16_t match_version = StreamActiveMatchVersionMap[sid];
                         qframe->setmatchVersion(match_version);
-                        //cout<<"[Edge_OF_RelayUnit] t:"<<simTime()<<"at "<<mac<<" Stream "<<sid<<"->frame between "<<frame->getSrc()<<":"<<frame->getDest()<<" service type: "<<qframe->getVID()<<" is tagged with "<<match_version<<endl;
-                   }
 
-                    OF_RelayUnit::processFrame(frame);
-                    msgHandled = true;
-
+//                        IInterfaceTable *inet_ift = getModuleFromPar<IInterfaceTable>(par("interfaceTableModule"), this);
+//                        MACAddress mac = inet_ift->getInterface(0)->getMacAddress();
+//                        cout<<"[Edge_OF_RelayUnit] t:"<<simTime()<<"at "<<mac<<" Stream "<<sid<<"->frame between "<<frame->getSrc()<<":"<<frame->getDest()<<" service type: "<<qframe->getVID()<<" is tagged with "<<match_version<<endl;
+                    }
                 }
-              //
             }
-
         }
 
     }
 
-
-
+    if(!msgHandled){
+        //not handled so forward to base
+        OF_RelayUnit::processDataPlanePacket(msg);
+    }
 }
-
-
 
 void Edge_OF_RelayUnit::handleSRPMsgFromController(CoRE4INET::SRPFrame * srpFrame ) {
     Enter_Method("handleSRPMsgFromController");
     //has been triggered by the Edge_OF_Agent
-            if (CoRE4INET::ListenerReady* listenerReady = dynamic_cast<CoRE4INET::ListenerReady*>(srpFrame)) {
-                std::cout<<"--->"<<this->getFullPath()<<listenerReady->getFullName()<<" msg "<<endl;
-                //sent to the realted talker
-                uint64_t sid = listenerReady->getStreamID();
-                inet::EthernetIIFrame * frame = new inet::EthernetIIFrame(listenerReady->getName());
-                frame->setEtherType(MSRP_ETHERTYPE);
-                frame->setDest(CoRE4INET::SRP_ADDRESS);
-                frame->encapsulate(listenerReady->dup());
+    if (CoRE4INET::ListenerReady* listenerReady = dynamic_cast<CoRE4INET::ListenerReady*>(srpFrame)) {
+        std::cout<<"--->"<<this->getFullPath()<<listenerReady->getFullName()<<" msg "<<endl;
+        //sent to the realted talker
+        uint64_t sid = listenerReady->getStreamID();
+        inet::EthernetIIFrame * frame = new inet::EthernetIIFrame(listenerReady->getName());
+        frame->setEtherType(MSRP_ETHERTYPE);
+        frame->setDest(CoRE4INET::SRP_ADDRESS);
+        frame->encapsulate(listenerReady->dup());
 
-                send(frame->dup(), "dataPlaneOut",  StreamPortMap[sid]);
-                delete frame;
-                delete listenerReady;
-            }
+        send(frame->dup(), "dataPlaneOut",  StreamPortMap[sid]);
+        delete frame;
+        delete listenerReady;
+    }
+}
+
+
+
+void Edge_OF_RelayUnit::handleMatchVersionMessage(CoRE4INET::EthernetIIFrameWithQTag * qframe){
+
+    uint16_t activeVersion = qframe->getmatchVersion();
+    uint64_t streamId = qframe->getStreamID();
+
+    StreamActiveMatchVersionMap[streamId]=activeVersion;
+    // cout<<"New match version is set as "<<activeVersion<<" for sid of "<<streamId<<endl;
+    delete qframe;
+
+
 }
 
 Edge_OF_RelayUnit::~Edge_OF_RelayUnit(){
-    StreamPortMap.clear();
-    StreamInfoMap.clear();
 }
 
 

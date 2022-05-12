@@ -37,13 +37,16 @@ void OPCE2::initialize() {
         PyObject *sysPath = PySys_GetObject((char*)"path");
         PyList_Append(sysPath, PyString_FromString("/tssdn-docker/omnetpp-5.5.1/DynTssdn/SDN4CoRE/src/sdn4core/controllerApps/opt/opce2/"));
     }
-
 }
 
 void OPCE2::handleParameterChange(const char* parname)
 {
     AbstractControllerApp::handleParameterChange(parname);
 }
+
+
+
+
 
 vector<Assignment> OPCE2::get_optimal_assignment(vector<Demand> ds, vector<Assignment> as, int demand_size, int assignment_size) {
     PyRun_SimpleString("import sys");
@@ -206,7 +209,7 @@ void OPCE2::finish(){
         handledTTDemandCounter++;
 
     std::string fid="EmbeddingRate";
-    std::string filename="/tssdn-docker/omnetpp-5.5.1/DynTssdn/SDN4CoRE/examples/tsnMigration/getnet/results/"+fid+".txt";
+    std::string filename="/tssdn-docker/omnetpp-5.5.1/DynTssdn/SDN4CoRE/examples/tsnReconfiguration/getnet/results/"+fid+".txt";
     fs.open(filename.c_str(), ios::out | ios::app ); //append mode
     fs<<handledTTDemandCounter<<":"<< receivedTTDemandCounter<<":"<< (1.0*handledTTDemandCounter/receivedTTDemandCounter)<<endl;
     cout<<handledTTDemandCounter<<" is embedded out of "<< receivedTTDemandCounter<<" TT flows:"<< (1.0*handledTTDemandCounter/receivedTTDemandCounter)<<endl;
